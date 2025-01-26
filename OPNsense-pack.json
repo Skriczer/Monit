@@ -1,0 +1,40 @@
+{
+  "v": "1",
+  "id": "6f88399d-9c58-4a70-b7fe-30d4a057132a",
+  "rev": 2,
+  "name": "OPNsense Dashboard",
+  "summary": "This pack includes everything needed to setup Graylog for the dashboard.",
+  "description": "",
+  "vendor": "bsmithio",
+  "url": "https://github.com/bsmithio/OPNsense-Dashboard",
+  "parameters": [],
+  "entities": [
+    {
+      "v": "1",
+      "type": {
+        "name": "input",
+        "version": "1"
+      },
+      "id": "a9e59e12-e4a8-4a9f-acda-960e78b8f9b6",
+      "data": {
+        "title": {
+          "@type": "string",
+          "@value": "Syslog UDP"
+        },
+        "configuration": {
+          "port": {
+            "@type": "integer",
+            "@value": 1514
+          },
+          "recv_buffer_size": {
+            "@type": "integer",
+            "@value": 262144
+          },
+          "force_rdns": {
+            "@type": "boolean",
+            "@value": false
+          },
+          "allow_override_date": {
+            "@type": "boolean",
+            "@value": true
+          },
