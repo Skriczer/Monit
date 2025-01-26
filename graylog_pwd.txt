@@ -1,0 +1,2 @@
+username 'admin' and password 'OdekuFcCBw
+Server_Ubuntu token: 1s33m5e2gpsifchiqhjsmqi71jrmfrgpatvhlcli61t9408ajh4
