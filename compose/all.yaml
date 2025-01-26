@@ -1,0 +1,208 @@
+services:
+  # Zabbix database MYSQL
+  zabbix-mysql:
+    image: "mysql:8.0-oracle"
+    environment:
+      MYSQL_ROOT_PASSWORD: "zabbix"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+      TZ: "Europe/Warsaw"
+    command:
+      - mysqld
+      - --skip-mysqlx
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_bin
+      - --log_bin_trust_function_creators=1
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.50
+    volumes:
+      - "mysql_data:/var/lib/mysql"
+    restart: "unless-stopped"
+  
+  # Zabbix server 
+  zabbix-server:
+    image: "zabbix/zabbix-server-mysql:ubuntu-7.0-latest"
+    depends_on:
+      - zabbix-mysql
+    init: true
+    environment:
+      DB_SERVER_HOST: "zabbix-mysql"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+      TZ: "Europe/Warsaw"
+    sysctls:
+      net.ipv4.ip_local_port_range: 1024 64999
+      net.ipv4.conf.all.accept_redirects: 0
+      net.ipv4.conf.all.secure_redirects: 0
+      net.ipv4.conf.all.send_redirects: 0
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.51
+    volumes:
+      - "zabbix_server_data:/var/lib/zabbix"
+    restart: "unless-stopped"
+   
+  # Zabbix web UI
+  zabbix-nginx:
+    image: "zabbix/zabbix-web-nginx-mysql:ubuntu-7.0-latest"
+    depends_on:
+      - zabbix-mysql
+      - zabbix-server
+    environment:
+      DB_SERVER_HOST: "zabbix-mysql"
+      ZBX_SERVER_HOST: "zabbix-server"
+      ZBX_SERVER_NAME: "Zabbix Docker"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+      TZ: "Europe/Warsaw"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.52
+    ports:
+      - 8080:8080
+    volumes:
+      - "zabbix_nginx:/usr/share/zabbix"
+    restart: "unless-stopped"
+    
+  # Graylog database MongoDB  
+  graylog-mongodb:
+    image: "mongo:5.0"
+    environment:
+      TZ: "Europe/Warsaw"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.60
+    volumes:
+      - "mongodb_data:/data/db"
+    restart: "unless-stopped"
+
+  # Graylog datanode
+  graylog-datanode:
+    hostname: "datanode"
+    image: "${DATANODE_IMAGE:-graylog/graylog-datanode:6.1}"
+    environment:
+      GRAYLOG_DATANODE_NODE_ID_FILE: "/var/lib/graylog-datanode/node-id"
+      GRAYLOG_DATANODE_PASSWORD_SECRET: "supertajnehaslo1234"
+      GRAYLOG_DATANODE_ROOT_PASSWORD_SHA2: "47d32aebc586c0d39786363393d9d2d964173e91c742edb0d86d400cf6861314"
+      GRAYLOG_DATANODE_MONGODB_URI: "mongodb://graylog-mongodb:27017/graylog"
+      TZ: "Europe/Warsaw"
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.61
+    ports:
+      - "8999:8999/tcp"   # DataNode API
+      - "9200:9200/tcp"
+      - "9300:9300/tcp"
+    volumes:
+      - "graylog_datanode:/var/lib/graylog-datanode"
+    restart: "unless-stopped"
+
+  # Graylog server
+  graylog-server:
+    hostname: "server"
+    image: "${GRAYLOG_IMAGE:-graylog/graylog:6.1}"
+    depends_on:
+      graylog-mongodb:
+        condition: "service_started"
+    entrypoint: "/usr/bin/tini --  /docker-entrypoint.sh"
+    environment:
+      GRAYLOG_NODE_ID_FILE: "/usr/share/graylog/data/data/node-id"
+      GRAYLOG_PASSWORD_SECRET: "supertajnehaslo1234"
+      GRAYLOG_ROOT_PASSWORD_SHA2: "47d32aebc586c0d39786363393d9d2d964173e91c742edb0d86d400cf6861314"
+      GRAYLOG_HTTP_BIND_ADDRESS: "0.0.0.0:9000"
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://localhost:9000/"
+      GRAYLOG_MONGODB_URI: "mongodb://graylog-mongodb:27017/graylog"
+      GRAYLOG_ROOT_TIMEZONE: "Europe/Warsaw"
+      TZ: "Europe/Warsaw"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.62
+    ports:
+    - "5044:5044/tcp"   # Beats
+    - "5140:5140/udp"   # Syslog
+    - "5140:5140/tcp"   # Syslog
+    - "5555:5555/tcp"   # RAW TCP
+    - "5555:5555/udp"   # RAW UDP
+    - "9000:9000/tcp"   # Server API
+    - "12201:12201/tcp" # GELF TCP
+    - "12201:12201/udp" # GELF UDP
+    #- "10000:10000/tcp" # Custom TCP port
+    #- "10000:10000/udp" # Custom UDP port
+    - "13301:13301/tcp" # Forwarder data
+    - "13302:13302/tcp" # Forwarder config
+    volumes:
+      - "graylog_data:/usr/share/graylog/data/data"
+      - "graylog_journal:/usr/share/graylog/data/journal"
+    restart: "unless-stopped"
+    
+  # Grafana instance  
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: "opnsense"
+      GF_SECURITY_ADMIN_PASSWORD: "opnsense"
+      GF_SECURITY_PLUGINS: "grafana-worldmap-panel"
+      TZ: "Europe/Warsaw"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.70
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana_storage:/var/lib/grafana
+    restart: "unless-stopped"
+    
+  # InfluxDB instance
+  influxdb:
+    container_name: influxdb
+    image: influxdb:2.6.1
+    environment:
+      TZ: "Europe/Warsaw"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.71
+    ports:
+      - '8086:8086'
+    volumes:
+      - "influxdb2_data:/var/lib/influxdb2"
+    restart: "unless-stopped"
+    
+networks:
+  project_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          ip_range: 172.20.10.0/24
+          gateway: 172.20.10.254
+          #aux_addresses:
+            #zabbix_mysql: 172.20.10.50
+            #zabbix_server: 172.20.10.51
+            #zabbix_nginx: 172.20.10.52
+            #graylog_mongodb: 172.20.10.60
+            #graylog_datanode: 172.20.10.61
+            #graylog_server: 172.20.10.62
+            #grafana: 172.20.10.70
+          
+volumes:
+  mysql_data:
+  zabbix_server_data:
+  zabbix_nginx:
+  mongodb_data:
+  graylog_datanode:
+  graylog_data:
+  graylog_journal:
+  grafana_storage:
+  influxdb2_data:

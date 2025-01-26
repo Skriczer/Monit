@@ -1,0 +1,81 @@
+services:
+  # Zabbix database MYSQL
+  zabbix-mysql:
+    image: "mysql:8.0-oracle"
+    environment:
+      MYSQL_ROOT_PASSWORD: "zabbix"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+    command:
+      - mysqld
+      - --skip-mysqlx
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_bin
+      - --log_bin_trust_function_creators=1
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.50
+    volumes:
+      - "mysql_data:/var/lib/mysql"
+    restart: "unless-stopped"
+  
+  # Zabbix server 
+  zabbix-server:
+    image: "zabbix/zabbix-server-mysql:ubuntu-7.0-latest"
+    depends_on:
+      - zabbix-mysql
+    init: true
+    environment:
+      DB_SERVER_HOST: "zabbix-mysql"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+    sysctls:
+      net.ipv4.ip_local_port_range: 1024 64999
+      net.ipv4.conf.all.accept_redirects: 0
+      net.ipv4.conf.all.secure_redirects: 0
+      net.ipv4.conf.all.send_redirects: 0
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.51
+    volumes:
+      - "zabbix_server_data:/var/lib/zabbix"
+    restart: "unless-stopped"
+   
+  # Zabbix web UI
+  zabbix-nginx:
+    image: "zabbix/zabbix-web-nginx-mysql:ubuntu-7.0-latest"
+    depends_on:
+      - zabbix-mysql
+      - zabbix-server
+    environment:
+      DB_SERVER_HOST: "zabbix-mysql"
+      ZBX_SERVER_HOST: "zabbix-server"
+      ZBX_SERVER_NAME: "Zabbix Docker"
+      MYSQL_USER: "zabbix"
+      MYSQL_PASSWORD: "zabbix"
+      MYSQL_DATABASE: "zabbix"
+    networks:
+      project_net:
+        ipv4_address: 172.20.10.52
+    ports:
+      - 8080:8080
+    volumes:
+      - "zabbix_nginx:/usr/share/zabbix"
+    restart: "unless-stopped"
+   
+networks:
+  project_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          ip_range: 172.20.10.0/24
+          gateway: 172.20.10.254
+          
+volumes:
+  mysql_data:
+  zabbix_server_data:
+  zabbix_nginx:
+
